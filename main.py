@@ -251,8 +251,8 @@ def main():
         
         # 深度分析间隔
         if i < deep_dive_count - 1:
-            print("等待 60 秒以符合 API 速率限制...")
-            time.sleep(60) 
+            print("等待 300 秒以符合 API 速率限制...")
+            time.sleep(300) 
 
     # 5. 写入文件
     with open("README.md", "w", encoding="utf-8") as f:
