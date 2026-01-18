@@ -1,2 +1,8 @@
-# Daily-report
-Fetch papers on computer vision from arXiv every day at 8 o'clock
+# 🚀 CV 论文日报 | 2026-01-18
+
+> 🤖 今日动态：扫描 89 篇，精选 0 篇深度解读。
+
+## 📋 目录 (Quick View)
+
+---
+## 🧠 深度解读 (Deep Dive)
