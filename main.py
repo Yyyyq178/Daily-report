@@ -13,7 +13,7 @@ genai.configure(api_key=GENAI_API_KEY)
 
 # 模型选择 (假设 2026 年环境，如报错请回退到 gemini-1.5-pro)
 MODEL_FAST = 'gemini-3-flash-preview' # 用于快速评分
-MODEL_DEEP = 'gemini-2.5-pro'       # 用于深度分析
+MODEL_DEEP = 'gemini-3-flash-preview'       # 用于深度分析
 
 # 核心关键词 (命中这些词的论文将优先处理)
 CORE_KEYWORDS = [
@@ -253,8 +253,8 @@ def main():
         # Pro 模型免费版通常限制 2 RPM (每分钟2次)，即 30秒/次。
         # 设置为 35 秒以保留安全缓冲，防止触发 429 错误。
         if i < deep_dive_count - 1: # 最后一篇不需要等待
-            print("等待 150 秒以符合 API 速率限制...")
-            time.sleep(150) 
+            print("等待 60 秒以符合 API 速率限制...")
+            time.sleep(60) 
 
     # 5. 写入文件
     with open("README.md", "w", encoding="utf-8") as f:
