@@ -162,18 +162,16 @@ def filter_and_score(papers):
             if base_priority == "High" and p.score < 7:
                 p.score = 7 
             
-            if p.score >= 6: # 只保留及格以上的
+            if p.score > 6: # 只保留及格以上的
                 scored_papers.append(p)
-            
-            # [修改点 2]：增加间隔时间
-            # Flash 免费版限制约 15 RPM (每分钟15次)，即 4秒/次
-            time.sleep(60) 
 
         except Exception as e:
             print(f"评分失败: {e}")
             time.sleep(4) # 出错也要等待，防止死循环请求
             continue
-
+        # [修改点 2]：增加间隔时间
+        # Flash 免费版限制约 15 RPM (每分钟15次)，即 4秒/次
+        time.sleep(60) 
     # 按分数降序排列
     scored_papers.sort(key=lambda x: x.score, reverse=True)
     return scored_papers
@@ -255,8 +253,8 @@ def main():
         # Pro 模型免费版通常限制 2 RPM (每分钟2次)，即 30秒/次。
         # 设置为 35 秒以保留安全缓冲，防止触发 429 错误。
         if i < deep_dive_count - 1: # 最后一篇不需要等待
-            print("等待 35 秒以符合 API 速率限制...")
-            time.sleep(60) 
+            print("等待 150 秒以符合 API 速率限制...")
+            time.sleep(150) 
 
     # 5. 写入文件
     with open("README.md", "w", encoding="utf-8") as f:
