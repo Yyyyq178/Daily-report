@@ -2,7 +2,7 @@ name: Daily Paper Digest
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 每天北京时间上午 9:00 运行
+    - cron: '0 0 * * *' # 每天北京时间上午 8:00 运行
   workflow_dispatch:   # 允许手动点击运行
 
 jobs:
