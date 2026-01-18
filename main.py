@@ -11,14 +11,16 @@ import re
 GENAI_API_KEY = os.environ.get("GEMINI_API_KEY")
 genai.configure(api_key=GENAI_API_KEY)
 
-# 模型选择 (假设 2026 年环境，如报错请回退到 gemini-1.5-pro)
-MODEL_FAST = 'gemini-3-flash-preview' # 用于快速评分
-MODEL_DEEP = 'gemini-3-flash-preview'       # 用于深度分析
+# 模型选择
+# 强烈建议使用 'gemini-1.5-flash'，这是目前 Free Tier 最稳定、额度最高的模型。
+# 如果你有 gemini-3 的权限，可以改回 'gemini-3-flash-preview'
+MODEL_FAST = 'gemini-3-flash-preview' 
+MODEL_DEEP = 'gemini-3-flash-preview' 
 
 # 核心关键词 (命中这些词的论文将优先处理)
 CORE_KEYWORDS = [
-    "Image Restoration", "Super-Resolution", "Denoising", "Deblurring",
-    "Masked Autoregressive", "MAR", "Diffusion Model", "Generative Prior",
+    "Image Restoration", "Super-Resolution", "Denoising", "Flow Based",
+    "Masked Autoregressive", "Diffusion Model", "Generative Prior",
     "High-Fidelity", "Perceptual Quality"
 ]
 
@@ -49,15 +51,12 @@ def get_huggingface_papers():
     print("正在抓取 Hugging Face Daily Papers...")
     papers = {}
     try:
-        # 这是一个模拟接口，实际中 HF 每日论文通常可以通过 API 或网页解析获取
-        # 这里为了稳定性，我们抓取 HF 热门榜单对应的 arXiv 链接
         url = "https://huggingface.co/api/daily_papers"
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            # 假设返回结构包含 paper 列表
             for item in data[:10]: # 只取前10热度
-                aid = item['paper']['id'] # 通常是 arxiv id
+                aid = item['paper']['id']
                 papers[aid] = "HuggingFace Hot"
     except Exception as e:
         print(f"HF 抓取失败 (非致命错误): {e}")
@@ -67,11 +66,10 @@ def fetch_papers_data(hf_ids):
     """主抓取逻辑：合并 HF 和 arXiv 数据"""
     client = arxiv.Client()
     
-    # [修改点 1]：减少扫描篇数，从 80 改为 40
     print("正在搜索 arXiv 最新论文 (Max: 40)...")
     search_arxiv = arxiv.Search(
         query="cat:cs.CV",
-        max_results=40, # 降低负载，只看最新的40篇
+        max_results=40, # 保持 40 篇以节省额度
         sort_by=arxiv.SortCriterion.SubmittedDate
     )
     
@@ -83,23 +81,25 @@ def fetch_papers_data(hf_ids):
         aid = result.get_short_id().split('v')[0]
         seen_ids.add(aid)
         
-        # 判定来源
         source = "arXiv Latest"
         if aid in hf_ids:
-            source = "🔥 HuggingFace Hot" # 只要在 HF 榜单上，标记为热点
+            source = "🔥 HuggingFace Hot"
         
         p = Paper(aid, result.title, result.summary, result.entry_id, source)
         results.append(p)
 
-    # 2. 如果 HF 里的 ID 没在 arXiv 最新列表里（可能是几天前的热点），需要补充抓取
+    # 补充抓取 HF 遗漏的论文
     missing_ids = [hid for hid in hf_ids if hid not in seen_ids]
     if missing_ids:
         print(f"补充抓取 {len(missing_ids)} 篇 HF 热门论文...")
-        search_missing = arxiv.Search(id_list=missing_ids)
-        for result in client.results(search_missing):
-            aid = result.get_short_id().split('v')[0]
-            p = Paper(aid, result.title, result.summary, result.entry_id, "🔥 HuggingFace Hot")
-            results.append(p)
+        try:
+            search_missing = arxiv.Search(id_list=missing_ids)
+            for result in client.results(search_missing):
+                aid = result.get_short_id().split('v')[0]
+                p = Paper(aid, result.title, result.summary, result.entry_id, "🔥 HuggingFace Hot")
+                results.append(p)
+        except Exception as e:
+            print(f"补充抓取失败: {e}")
             
     return results
 
@@ -117,7 +117,6 @@ def filter_and_score(papers):
         if any(ex.lower() in text for ex in EXCLUDE_KEYWORDS):
             continue
         
-        # 至少命中一个广泛关键词，或者来自 HF 热榜
         if any(k.lower() in text for k in (CORE_KEYWORDS + BROAD_KEYWORDS)) or "Hot" in p.source:
             candidates.append(p)
             
@@ -128,10 +127,8 @@ def filter_and_score(papers):
     
     scored_papers = []
     for i, p in enumerate(candidates):
-        # 简单的进度提示
         print(f"正在评分 ({i+1}/{len(candidates)}): {p.title[:30]}...")
 
-        # 如果标题包含核心关键词，直接加分
         base_priority = "High" if any(k.lower() in p.title.lower() for k in CORE_KEYWORDS) else "Normal"
         
         prompt = f"""
@@ -154,30 +151,32 @@ def filter_and_score(papers):
             if found_scores:
                 p.score = int(float(found_scores[0]))
             else:
-                p.score = 5 # 默认分
+                p.score = 5 
             
             p.reasoning = text.split('|')[1].strip() if '|' in text else text
             
-            # 核心领域论文强行提权
             if base_priority == "High" and p.score < 7:
                 p.score = 7 
             
-            if p.score > 6: # 只保留及格以上的
+            if p.score > 6:
                 scored_papers.append(p)
+                print(f"  -> 评分成功: {p.score}")
 
         except Exception as e:
-            print(f"评分失败: {e}")
-            time.sleep(4) # 出错也要等待，防止死循环请求
-            continue
-        # [修改点 2]：增加间隔时间
-        # Flash 免费版限制约 15 RPM (每分钟15次)，即 4秒/次
+            # 捕获错误但不中断循环
+            print(f"  -> 评分失败: {e}")
+            # 【关键修改】这里去掉了 continue，确保无论成功失败都会执行下面的 sleep
+        
+        # 【关键修改】强制等待 60 秒
+        # 放在 try...except 外面，确保每次循环末尾都执行
+        print("  -> 冷却 60 秒以保护 API 配额...")
         time.sleep(60) 
-    # 按分数降序排列
+
     scored_papers.sort(key=lambda x: x.score, reverse=True)
     return scored_papers
 
 def deep_analyze_paper(paper):
-    """使用 Pro 模型进行深度审稿"""
+    """使用模型进行深度审稿"""
     model = genai.GenerativeModel(MODEL_DEEP)
     
     prompt = f"""
@@ -204,7 +203,8 @@ def deep_analyze_paper(paper):
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"分析生成失败: {e}"
+        print(f"深度分析失败: {e}")
+        return f"> **分析生成失败**: API 调用出错 ({str(e)[:100]}...)"
 
 # =================主程序=================
 def main():
@@ -235,7 +235,7 @@ def main():
         md_content += f"- **{p.score}分** {icon} [{p.title}]({p.url}) - *{p.reasoning}*\n"
     md_content += "\n---\n"
     
-    # 深度分析部分 (只取前 5 篇，保护 Pro 额度)
+    # 深度分析部分 (只取前 5 篇)
     md_content += "## 🧠 深度解读 (Deep Dive)\n"
     
     deep_dive_count = min(5, len(top_papers))
@@ -249,10 +249,8 @@ def main():
         md_content += f"{analysis}\n\n"
         md_content += "---\n"
         
-        # [修改点 3]：增加深读间隔
-        # Pro 模型免费版通常限制 2 RPM (每分钟2次)，即 30秒/次。
-        # 设置为 35 秒以保留安全缓冲，防止触发 429 错误。
-        if i < deep_dive_count - 1: # 最后一篇不需要等待
+        # 深度分析间隔
+        if i < deep_dive_count - 1:
             print("等待 60 秒以符合 API 速率限制...")
             time.sleep(60) 
 
