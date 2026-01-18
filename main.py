@@ -1,26 +1,29 @@
 import google.generativeai as genai
 import requests
 import os
-import datetime
 import time
 import re
+import json
 
 # =================配置区域=================
+# 建议检查 Key 是否存在
 GENAI_API_KEY = os.environ.get("GEMINI_API_KEY")
+if not GENAI_API_KEY:
+    raise ValueError("❌ 未检测到 GEMINI_API_KEY，请检查环境变量设置")
+
 genai.configure(api_key=GENAI_API_KEY)
 
-# 推荐使用 Flash 模型进行快速评分，Pro 模型进行深度分析
 MODEL_FAST = 'gemini-1.5-flash' 
 MODEL_DEEP = 'gemini-1.5-pro' 
 
-# 核心关注领域（影响评分权重）
+# 核心关注领域
 CORE_KEYWORDS = ["Image Restoration", "Masked Autoregressive", "Flow Matching", "Super-Resolution", "Diffusion", "Image Generation"]
 
 # =================数据结构=================
 class Paper:
     def __init__(self, title, summary, url, source):
-        self.title = title.replace('\n', ' ')
-        self.summary = summary.replace('\n', ' ')
+        self.title = title.replace('\n', ' ').strip()
+        self.summary = summary.replace('\n', ' ').strip()
         self.url = url
         self.source = source
         self.score = 0
@@ -28,87 +31,115 @@ class Paper:
 
 # =================抓取模块=================
 def get_huggingface_papers():
-    """获取 Hugging Face 前 10 篇热门论文"""
-    print("正在抓取 Hugging Face Daily Papers...")
+    print("📡 正在抓取 Hugging Face Daily Papers...")
     results = []
     try:
         url = "https://huggingface.co/api/daily_papers"
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            for item in data[:10]: # 仅取前 10
+            # HF API 有时返回的是 list 有时是按日期分类的 dict，做个兼容
+            items = data if isinstance(data, list) else []
+            if not items and isinstance(data, dict):
+                 # 尝试获取最新日期的数据 (简化逻辑)
+                 items = list(data.values())[0] if data else []
+
+            for item in items[:8]: # 限制数量以加快测试
                 paper_info = item['paper']
-                aid = paper_info['id']
                 results.append(Paper(
                     title=paper_info['title'],
                     summary=paper_info['summary'],
-                    url=f"https://arxiv.org/abs/{aid}",
+                    url=f"https://arxiv.org/abs/{paper_info['id']}",
                     source="HuggingFace 🔥"
                 ))
     except Exception as e:
-        print(f"HF 抓取失败: {e}")
+        print(f"⚠️ HF 抓取遇到问题: {e}")
     return results
 
 def get_openreview_papers():
-    """获取 OpenReview 最新投稿 (以最近的大会为例)"""
-    print("正在抓取 OpenReview 最新投稿...")
+    print("📡 正在抓取 OpenReview (ICLR 2025)...")
     results = []
     try:
-        # 抓取 ICLR 2025 的提交作为示例，OpenReview API v2
-        # 注意：venue id 会随赛季变化
-        api_url = "https://api2.openreview.net/notes?content.venueid=ICLR.cc/2025/Conference&limit=10"
+        # 使用更通用的 API 搜索关键词，避免 venueid 变动导致抓空
+        # 这里演示搜索 'Image Restoration' 相关的最新投稿
+        domain = "ICLR.cc/2025/Conference" # 或 use search query
+        api_url = f"https://api2.openreview.net/notes?content.venueid={domain}&limit=8"
+        
         response = requests.get(api_url, timeout=10)
         if response.status_code == 200:
             notes = response.json().get('notes', [])
             for note in notes:
                 content = note.get('content', {})
+                # V2 API 结构兼容
                 title = content.get('title', {}).get('value', 'No Title')
                 abstract = content.get('abstract', {}).get('value', 'No Abstract')
-                note_id = note.get('id')
                 results.append(Paper(
                     title=title,
                     summary=abstract,
-                    url=f"https://openreview.net/forum?id={note_id}",
+                    url=f"https://openreview.net/forum?id={note.get('id')}",
                     source="OpenReview 🎓"
                 ))
+        else:
+            print(f"OpenReview API 状态码: {response.status_code}")
     except Exception as e:
-        print(f"OpenReview 抓取失败: {e}")
+        print(f"⚠️ OpenReview 抓取遇到问题: {e}")
     return results
 
 # =================AI 分析模块=================
 def score_paper(paper):
-    """使用 Gemini 对论文进行 1-10 分打分"""
-    model = genai.GenerativeModel(MODEL_FAST)
-    prompt = f"""
-    Role: Senior CV Researcher.
-    Task: Rate the importance (1-10) of this paper for someone working on Image Restoration and Masked Autoregressive (MAR) models.
-    Paper Title: {paper.title}
-    Abstract: {paper.summary}
+    """
+    使用 Gemini Flash 打分
+    优化点：传入了 CORE_KEYWORDS，并强制 JSON 输出以便解析
+    """
+    model = genai.GenerativeModel(
+        MODEL_FAST,
+        generation_config={"response_mime_type": "application/json"} # 强制 JSON
+    )
     
-    Output format: Score | One-sentence reason in Chinese.
+    # 将关键词列表转为字符串
+    keywords_str = ", ".join(CORE_KEYWORDS)
+    
+    prompt = f"""
+    You are a Senior Computer Vision Researcher acting as a paper filter.
+    
+    My Core Interests: [{keywords_str}].
+    
+    Task: Rate the following paper from 1 to 10 based on relevance to my interests and potential impact.
+    - 10: Must read. Directly addresses core interests with high novelty.
+    - 1: Irrelevant.
+    
+    Paper Title: {paper.title}
+    Abstract: {paper.summary[:1000]} (truncated)
+    
+    Output strictly in JSON format:
+    {{
+        "score": int,
+        "reason": "short explanation in Chinese"
+    }}
     """
     try:
         response = model.generate_content(prompt)
-        text = response.text.strip()
-        score_match = re.search(r"(\d+)", text)
-        score = int(score_match.group(1)) if score_match else 5
-        reason = text.split('|')[1].strip() if '|' in text else text
-        return score, reason
+        data = json.loads(response.text)
+        return data.get("score", 0), data.get("reason", "解析失败")
     except Exception as e:
-        print(f"评分出错: {e}")
+        print(f"⚠️ 评分出错 ({paper.title[:10]}...): {e}")
         return 0, "Error"
 
 def deep_analyze(paper):
-    """对 Top 2 论文进行深度中文解读"""
+    print(f"🧠 正在深度阅读: {paper.title}...")
     model = genai.GenerativeModel(MODEL_DEEP)
     prompt = f"""
-    请作为计算机视觉专家，深度解析这篇论文，并用中文输出：
-    1. 核心创新点：
-    2. 对图像恢复(Image Restoration)任务的启发：
-    3. 潜在的局限性：
+    请作为计算机视觉专家，深度解析这篇论文。
+    核心关注点：{", ".join(CORE_KEYWORDS)}
     
     论文标题：{paper.title}
     摘要：{paper.summary}
+    
+    请用中文 Markdown 格式输出：
+    1. **核心创新点 (Key Contribution)**: 一句话总结。
+    2. **技术细节 (Methodology)**: 它是如何结合 {CORE_KEYWORDS[0]} 或相关技术的？
+    3. **对我的启发 (Takeaway)**: 针对做 Image Restoration 的研究员，这就话有什么借鉴意义？
+    4. **潜在缺陷 (Limitations)**.
     """
     try:
         response = model.generate_content(prompt)
@@ -118,36 +149,53 @@ def deep_analyze(paper):
 
 # =================主程序=================
 def main():
-    # 1. 抓取数据
+    # 1. 抓取
     all_papers = get_huggingface_papers() + get_openreview_papers()
-    print(f"总计抓取候选论文: {len(all_papers)} 篇")
+    print(f"📚 总计获取候选论文: {len(all_papers)} 篇")
     
-    # 2. 依次打分（带冷却防止 429）
-    print("开始进行 AI 筛选与打分...")
+    if not all_papers:
+        print("❌ 未获取到任何论文，请检查 API 或网络。")
+        return
+
+    # 2. 快速打分 (去除长时间 sleep，Flash 很快且限额高)
+    print("\n⚡ 开始 AI 极速筛选...")
     for i, p in enumerate(all_papers):
+        # 简单的进度显示
+        print(f"\r处理中 [{i+1}/{len(all_papers)}]: {p.title[:30]}...", end="")
         p.score, p.reasoning = score_paper(p)
-        print(f"[{i+1}/{len(all_papers)}] {p.score}分 - {p.title[:40]}...")
-        time.sleep(10) # 评分阶段每篇间隔 10 秒
-        
-    # 3. 排序并取 Top 2
-    top_2 = sorted(all_papers, key=lambda x: x.score, reverse=True)[:2]
+        # Flash 免费层级一般允许 15 RPM (每分钟15次)，稍微停顿 2 秒即可，不用 10 秒
+        time.sleep(10) 
     
-    # 4. 输出最终结果
+    print("\n✅ 筛选完成！")
+
+    # 3. 排序并取 Top 2
+    # 过滤掉低分 (例如 5 分以下)，然后排序
+    top_candidates = [p for p in all_papers if p.score >= 5]
+    top_2 = sorted(top_candidates, key=lambda x: x.score, reverse=True)[:2]
+    
+    if not top_2:
+        print("😅 没有找到高分论文，可能是今天的论文都与关注点无关。")
+        # 兜底：取原始最高分
+        top_2 = sorted(all_papers, key=lambda x: x.score, reverse=True)[:2]
+
+    # 4. 输出结果
     print("\n" + "="*50)
     print(f"🚀 今日顶级推荐 (TOP 2)")
     print("="*50 + "\n")
     
     for i, p in enumerate(top_2):
-        print(f"第 {i+1} 篇：{p.title}")
-        print(f"来源: {p.source} | 评分: {p.score}/10")
+        print(f"🏆 第 {i+1} 名：{p.title}")
+        print(f"来源: {p.source} | 💡 评分: {p.score}/10")
+        print(f"理由: {p.reasoning}")
         print(f"链接: {p.url}")
-        print("-" * 20)
+        print("-" * 30)
         
-        # 深度分析需要较多 Token，再次等待确保 API 稳定
-        time.sleep(30)
+        # 深度分析
         analysis = deep_analyze(p)
-        print(f"【深度解读】\n{analysis}\n")
+        print(f"\n{analysis}\n")
         print("="*50 + "\n")
+        # Pro 模型稍微多歇一会
+        time.sleep(30)
 
 if __name__ == "__main__":
     main()
