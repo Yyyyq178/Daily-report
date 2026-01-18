@@ -167,7 +167,7 @@ def filter_and_score(papers):
             
             # [修改点 2]：增加间隔时间
             # Flash 免费版限制约 15 RPM (每分钟15次)，即 4秒/次
-            time.sleep(4) 
+            time.sleep(60) 
 
         except Exception as e:
             print(f"评分失败: {e}")
@@ -256,7 +256,7 @@ def main():
         # 设置为 35 秒以保留安全缓冲，防止触发 429 错误。
         if i < deep_dive_count - 1: # 最后一篇不需要等待
             print("等待 35 秒以符合 API 速率限制...")
-            time.sleep(35) 
+            time.sleep(60) 
 
     # 5. 写入文件
     with open("README.md", "w", encoding="utf-8") as f:
