@@ -163,27 +163,27 @@ def main():
         # 简单的进度显示
         print(f"\r处理中 [{i+1}/{len(all_papers)}]: {p.title[:30]}...", end="")
         p.score, p.reasoning = score_paper(p)
-        # Flash 免费层级一般允许 15 RPM (每分钟15次)，稍微停顿 2 秒即可，不用 10 秒
-        time.sleep(10) 
+
+        time.sleep(12) 
     
     print("\n✅ 筛选完成！")
 
-    # 3. 排序并取 Top 2
+    # 3. 排序并取 Top 5
     # 过滤掉低分 (例如 5 分以下)，然后排序
     top_candidates = [p for p in all_papers if p.score >= 5]
-    top_2 = sorted(top_candidates, key=lambda x: x.score, reverse=True)[:2]
+    top_5 = sorted(top_candidates, key=lambda x: x.score, reverse=True)[:5]
     
-    if not top_2:
+    if not top_5:
         print("😅 没有找到高分论文，可能是今天的论文都与关注点无关。")
         # 兜底：取原始最高分
-        top_2 = sorted(all_papers, key=lambda x: x.score, reverse=True)[:2]
+        top_5 = sorted(all_papers, key=lambda x: x.score, reverse=True)[:5]
 
     # 4. 输出结果
     print("\n" + "="*50)
-    print(f"🚀 今日顶级推荐 (TOP 2)")
+    print(f"🚀 今日顶级推荐 (TOP 5)")
     print("="*50 + "\n")
     
-    for i, p in enumerate(top_2):
+    for i, p in enumerate(top_5):
         print(f"🏆 第 {i+1} 名：{p.title}")
         print(f"来源: {p.source} | 💡 评分: {p.score}/10")
         print(f"理由: {p.reasoning}")
@@ -195,7 +195,7 @@ def main():
         print(f"\n{analysis}\n")
         print("="*50 + "\n")
         # Pro 模型稍微多歇一会
-        time.sleep(30)
+        time.sleep(60)
 
 if __name__ == "__main__":
     main()
