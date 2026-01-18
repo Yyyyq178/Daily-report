@@ -14,8 +14,8 @@ genai.configure(api_key=GENAI_API_KEY)
 # 模型选择
 # 强烈建议使用 'gemini-1.5-flash'，这是目前 Free Tier 最稳定、额度最高的模型。
 # 如果你有 gemini-3 的权限，可以改回 'gemini-3-flash-preview'
-MODEL_FAST = 'gemini-3-flash-preview' 
-MODEL_DEEP = 'gemini-2.5-pro' 
+MODEL_FAST = 'gemini-1.5-flash-preview' 
+MODEL_DEEP = 'gemini-1.5-pro' 
 
 # 核心关键词 (命中这些词的论文将优先处理)
 CORE_KEYWORDS = [
