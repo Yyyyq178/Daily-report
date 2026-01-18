@@ -12,8 +12,8 @@ GENAI_API_KEY = os.environ.get("GEMINI_API_KEY")
 genai.configure(api_key=GENAI_API_KEY)
 
 # 模型选择 (假设 2026 年环境，如报错请回退到 gemini-1.5-pro)
-MODEL_FAST = 'gemini-3-flash-preview' # 用于快速评分 (或 gemini-3.0-flash)
-MODEL_DEEP = 'gemini-2.5-pro'       # 用于深度分析 (或 gemini-3.0-pro)
+MODEL_FAST = 'gemini-3-flash-preview' # 用于快速评分
+MODEL_DEEP = 'gemini-2.5-pro'       # 用于深度分析
 
 # 核心关键词 (命中这些词的论文将优先处理)
 CORE_KEYWORDS = [
@@ -67,10 +67,11 @@ def fetch_papers_data(hf_ids):
     """主抓取逻辑：合并 HF 和 arXiv 数据"""
     client = arxiv.Client()
     
-    # 1. 搜索最新的 cs.CV
+    # [修改点 1]：减少扫描篇数，从 80 改为 40
+    print("正在搜索 arXiv 最新论文 (Max: 40)...")
     search_arxiv = arxiv.Search(
         query="cat:cs.CV",
-        max_results=80, # 抓取更多以供筛选
+        max_results=40, # 降低负载，只看最新的40篇
         sort_by=arxiv.SortCriterion.SubmittedDate
     )
     
@@ -93,6 +94,7 @@ def fetch_papers_data(hf_ids):
     # 2. 如果 HF 里的 ID 没在 arXiv 最新列表里（可能是几天前的热点），需要补充抓取
     missing_ids = [hid for hid in hf_ids if hid not in seen_ids]
     if missing_ids:
+        print(f"补充抓取 {len(missing_ids)} 篇 HF 热门论文...")
         search_missing = arxiv.Search(id_list=missing_ids)
         for result in client.results(search_missing):
             aid = result.get_short_id().split('v')[0]
@@ -121,11 +123,14 @@ def filter_and_score(papers):
             
     print(f"初筛通过: {len(candidates)} 篇，开始 AI 评分...")
     
-    # 2. AI 评分 (Batch处理或单篇处理，这里用单篇+Flash)
+    # 2. AI 评分
     model = genai.GenerativeModel(MODEL_FAST)
     
     scored_papers = []
-    for p in candidates:
+    for i, p in enumerate(candidates):
+        # 简单的进度提示
+        print(f"正在评分 ({i+1}/{len(candidates)}): {p.title[:30]}...")
+
         # 如果标题包含核心关键词，直接加分
         base_priority = "High" if any(k.lower() in p.title.lower() for k in CORE_KEYWORDS) else "Normal"
         
@@ -143,7 +148,14 @@ def filter_and_score(papers):
             response = model.generate_content(prompt)
             text = response.text.strip()
             score_str = text.split('|')[0].strip()
-            p.score = int(float(re.findall(r"\d+", score_str)[0]))
+            
+            # 解析分数
+            found_scores = re.findall(r"\d+", score_str)
+            if found_scores:
+                p.score = int(float(found_scores[0]))
+            else:
+                p.score = 5 # 默认分
+            
             p.reasoning = text.split('|')[1].strip() if '|' in text else text
             
             # 核心领域论文强行提权
@@ -152,10 +164,14 @@ def filter_and_score(papers):
             
             if p.score >= 6: # 只保留及格以上的
                 scored_papers.append(p)
-                
-            time.sleep(1) # 避免 Flash 速率限制 (15 RPM)
+            
+            # [修改点 2]：增加间隔时间
+            # Flash 免费版限制约 15 RPM (每分钟15次)，即 4秒/次
+            time.sleep(4) 
+
         except Exception as e:
             print(f"评分失败: {e}")
+            time.sleep(4) # 出错也要等待，防止死循环请求
             continue
 
     # 按分数降序排列
@@ -201,6 +217,10 @@ def main():
     all_papers = fetch_papers_data(hf_ids)
     print(f"共抓取原始论文: {len(all_papers)} 篇")
     
+    if not all_papers:
+        print("未抓取到论文，程序结束。")
+        return
+
     # 3. 筛选与评分
     top_papers = filter_and_score(all_papers)
     print(f"最终入选精读: {len(top_papers)} 篇")
@@ -219,8 +239,11 @@ def main():
     
     # 深度分析部分 (只取前 5 篇，保护 Pro 额度)
     md_content += "## 🧠 深度解读 (Deep Dive)\n"
-    for i, p in enumerate(top_papers[:5]):
-        print(f"正在深度分析第 {i+1} 篇: {p.title}...")
+    
+    deep_dive_count = min(5, len(top_papers))
+    
+    for i, p in enumerate(top_papers[:deep_dive_count]):
+        print(f"正在深度分析第 {i+1}/{deep_dive_count} 篇: {p.title}...")
         analysis = deep_analyze_paper(p)
         
         md_content += f"### {i+1}. {p.title}\n"
@@ -228,13 +251,17 @@ def main():
         md_content += f"{analysis}\n\n"
         md_content += "---\n"
         
-        # Pro 模型通常限制 2 RPM，必须强制休眠
-        time.sleep(30) 
+        # [修改点 3]：增加深读间隔
+        # Pro 模型免费版通常限制 2 RPM (每分钟2次)，即 30秒/次。
+        # 设置为 35 秒以保留安全缓冲，防止触发 429 错误。
+        if i < deep_dive_count - 1: # 最后一篇不需要等待
+            print("等待 35 秒以符合 API 速率限制...")
+            time.sleep(35) 
 
     # 5. 写入文件
     with open("README.md", "w", encoding="utf-8") as f:
         f.write(md_content)
-    print("报告生成完毕！")
+    print(f"报告生成完毕！已保存至 README.md")
 
 if __name__ == "__main__":
     main()
