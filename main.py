@@ -12,8 +12,8 @@ GENAI_API_KEY = os.environ.get("GEMINI_API_KEY")
 genai.configure(api_key=GENAI_API_KEY)
 
 # 模型选择 (假设 2026 年环境，如报错请回退到 gemini-1.5-pro)
-MODEL_FAST = 'models/gemini-1.5-flash' # 用于快速评分 (或 gemini-3.0-flash)
-MODEL_DEEP = 'models/gemini-1.5-pro'       # 用于深度分析 (或 gemini-3.0-pro)
+MODEL_FAST = 'gemini-3-flash-preview' # 用于快速评分 (或 gemini-3.0-flash)
+MODEL_DEEP = 'gemini-2.5-pro'       # 用于深度分析 (或 gemini-3.0-pro)
 
 # 核心关键词 (命中这些词的论文将优先处理)
 CORE_KEYWORDS = [
