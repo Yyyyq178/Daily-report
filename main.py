@@ -14,8 +14,8 @@ if not GENAI_API_KEY:
 
 genai.configure(api_key=GENAI_API_KEY)
 
-MODEL_FAST = 'gemini-3-flash' 
-MODEL_DEEP = 'gemini-3-flash' 
+MODEL_FAST = 'gemini-2.5-flash' 
+MODEL_DEEP = 'gemini-2.5-flash' 
 
 # 核心关注领域
 CORE_KEYWORDS = ["Image Restoration", "Masked Autoregressive", "Flow Matching", "Super-Resolution", "Diffusion", "Image Generation"]
