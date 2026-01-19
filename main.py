@@ -4,6 +4,7 @@ import os
 import time
 import re
 import json
+from datetime import datetime
 
 # =================配置区域=================
 # 建议检查 Key 是否存在
@@ -147,6 +148,58 @@ def deep_analyze(paper):
     except Exception as e:
         return f"深度分析失败: {e}"
 
+# =================报告生成模块=================
+def save_report(all_papers, top_data):
+    """
+    生成 Markdown 报告并写入 README.md
+    """
+    print("\n📝 正在生成日报文件...")
+    
+    # 获取当前日期
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    
+    # 构建 Markdown 内容
+    md_content = []
+    md_content.append(f"# 🚀 CV 论文日报 | {current_date}\n")
+    md_content.append(f"> 🤖 今日动态：扫描 {len(all_papers)} 篇，精选 {len(top_data)} 篇深度解读。\n")
+    
+    # 目录部分
+    md_content.append("## 📋 目录 (Quick View)\n")
+    if not top_data:
+        md_content.append("今日无高分推荐。\n")
+    else:
+        for idx, item in enumerate(top_data):
+            paper = item['paper']
+            # 创建简单的锚点链接
+            anchor = f"item-{idx}"
+            md_content.append(f"- [{paper.title}](#{anchor}) (Score: {paper.score})\n")
+    
+    md_content.append("\n---\n")
+    
+    # 深度解读部分
+    md_content.append("## 🧠 深度解读 (Deep Dive)\n")
+    if not top_data:
+        md_content.append("暂时没有深度分析内容。\n")
+    else:
+        for idx, item in enumerate(top_data):
+            paper = item['paper']
+            analysis = item['analysis']
+            anchor = f"item-{idx}"
+            
+            md_content.append(f"### <a id='{anchor}'></a>{idx+1}. {paper.title}\n")
+            md_content.append(f"**来源**: {paper.source} | **评分**: {paper.score}/10\n")
+            md_content.append(f"**原文链接**: [{paper.url}]({paper.url})\n\n")
+            md_content.append(f"{analysis}\n")
+            md_content.append("\n---\n")
+
+    # 写入文件
+    try:
+        with open("README.md", "w", encoding="utf-8") as f:
+            f.writelines(md_content)
+        print("✅ README.md 更新成功！")
+    except Exception as e:
+        print(f"❌ 写入文件失败: {e}")
+
 # =================主程序=================
 def main():
     # 1. 抓取
@@ -178,11 +231,13 @@ def main():
         # 兜底：取原始最高分
         top_2 = sorted(all_papers, key=lambda x: x.score, reverse=True)[:2]
 
-    # 4. 输出结果
+    # 4. 输出结果并收集数据用于报告
     print("\n" + "="*50)
     print(f"🚀 今日顶级推荐 (TOP 2)")
     print("="*50 + "\n")
     
+    report_data = [] # 用于存储生成的报告内容
+
     for i, p in enumerate(top_2):
         print(f"🏆 第 {i+1} 名：{p.title}")
         print(f"来源: {p.source} | 💡 评分: {p.score}/10")
@@ -194,8 +249,18 @@ def main():
         analysis = deep_analyze(p)
         print(f"\n{analysis}\n")
         print("="*50 + "\n")
+        
+        # 收集数据
+        report_data.append({
+            "paper": p,
+            "analysis": analysis
+        })
+
         # Pro 模型稍微多歇一会
         time.sleep(100)
+    
+    # 5. 生成并保存 Markdown 报告
+    save_report(all_papers, report_data)
 
 if __name__ == "__main__":
     main()
