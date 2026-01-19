@@ -10,13 +10,13 @@
 **来源**: HuggingFace 🔥 | **评分**: 0/10
 **原文链接**: [https://arxiv.org/abs/2601.11227](https://arxiv.org/abs/2601.11227)
 
-深度分析失败: 404 models/gemini-3.0-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+深度分析失败: 404 models/gemini-3-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
 
 ---
 ### <a id='item-1'></a>2. More Images, More Problems? A Controlled Analysis of VLM Failure Modes
 **来源**: HuggingFace 🔥 | **评分**: 0/10
 **原文链接**: [https://arxiv.org/abs/2601.07812](https://arxiv.org/abs/2601.07812)
 
-深度分析失败: 404 models/gemini-3.0-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+深度分析失败: 404 models/gemini-3-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
 
 ---
