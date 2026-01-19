@@ -13,8 +13,8 @@ if not GENAI_API_KEY:
 
 genai.configure(api_key=GENAI_API_KEY)
 
-MODEL_FAST = 'gemini-2.5-flash' 
-MODEL_DEEP = 'gemini-2.5-flash' 
+MODEL_FAST = 'gemini-3.0-flash' 
+MODEL_DEEP = 'gemini-3.0-flash' 
 
 # 核心关注领域
 CORE_KEYWORDS = ["Image Restoration", "Masked Autoregressive", "Flow Matching", "Super-Resolution", "Diffusion", "Image Generation"]
@@ -35,7 +35,7 @@ def get_huggingface_papers():
     results = []
     try:
         url = "https://huggingface.co/api/daily_papers"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=8)
         if response.status_code == 200:
             data = response.json()
             # HF API 有时返回的是 list 有时是按日期分类的 dict，做个兼容
@@ -65,7 +65,7 @@ def get_openreview_papers():
         domain = "ICLR.cc/2025/Conference" # 或 use search query
         api_url = f"https://api2.openreview.net/notes?content.venueid={domain}&limit=8"
         
-        response = requests.get(api_url, timeout=10)
+        response = requests.get(api_url, timeout=8)
         if response.status_code == 200:
             notes = response.json().get('notes', [])
             for note in notes:
@@ -164,26 +164,26 @@ def main():
         print(f"\r处理中 [{i+1}/{len(all_papers)}]: {p.title[:30]}...", end="")
         p.score, p.reasoning = score_paper(p)
 
-        time.sleep(12) 
+        time.sleep(20) 
     
     print("\n✅ 筛选完成！")
 
-    # 3. 排序并取 Top 5
+    # 3. 排序并取 Top 2
     # 过滤掉低分 (例如 5 分以下)，然后排序
     top_candidates = [p for p in all_papers if p.score >= 5]
-    top_5 = sorted(top_candidates, key=lambda x: x.score, reverse=True)[:5]
+    top_2 = sorted(top_candidates, key=lambda x: x.score, reverse=True)[:2]
     
-    if not top_5:
+    if not top_2:
         print("😅 没有找到高分论文，可能是今天的论文都与关注点无关。")
         # 兜底：取原始最高分
-        top_5 = sorted(all_papers, key=lambda x: x.score, reverse=True)[:5]
+        top_2 = sorted(all_papers, key=lambda x: x.score, reverse=True)[:2]
 
     # 4. 输出结果
     print("\n" + "="*50)
-    print(f"🚀 今日顶级推荐 (TOP 5)")
+    print(f"🚀 今日顶级推荐 (TOP 2)")
     print("="*50 + "\n")
     
-    for i, p in enumerate(top_5):
+    for i, p in enumerate(top_2):
         print(f"🏆 第 {i+1} 名：{p.title}")
         print(f"来源: {p.source} | 💡 评分: {p.score}/10")
         print(f"理由: {p.reasoning}")
@@ -195,7 +195,7 @@ def main():
         print(f"\n{analysis}\n")
         print("="*50 + "\n")
         # Pro 模型稍微多歇一会
-        time.sleep(60)
+        time.sleep(100)
 
 if __name__ == "__main__":
     main()
